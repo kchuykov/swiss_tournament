@@ -13,32 +13,18 @@ def connect():
 
 def deleteMatches():
     """Remove all the match records from the database."""
-    pg = connect()
-    c = pg.cursor()
-    sql_string = "delete from matches;" 
-    c.execute(sql_string)
-    pg.commit()
-    pg.close() 
+    execute_query("delete from matches;", commit=True)
     
 
 def deletePlayers():
     """Remove all the player records from the database."""
-    pg = connect()
-    c = pg.cursor()
-    sql_string = "delete from players;"
-    c.execute(sql_string)
-    pg.commit()
-    pg.close()
+    execute_query("delete from players;",commit=True)
+
 
 def countPlayers():
     """Returns the number of players currently registered."""
-    pg = connect()
-    c = pg.cursor()
-    sql_string = "select count(*) as num from players"
-    c.execute(sql_string)
-    result = c.fetchone()[0]
-    pg.close()
-    return result
+    return  execute_query("select count(*) as num from players", fetch=True)[0][0]
+
 
 
 def registerPlayer(name):
@@ -50,12 +36,9 @@ def registerPlayer(name):
     Args:
       name: the player's full name (need not be unique).
     """
-    pg = connect()
-    c = pg.cursor()
     sql_string = "insert into players (name) values(%s);"
-    c.execute(sql_string, (name,))
-    pg.commit()
-    pg.close()
+    execute_query(sql_string, (name,),commit=True)
+
 
 def playerStandings():
     """Returns a list of the players and their win records, sorted by wins.
@@ -70,13 +53,7 @@ def playerStandings():
         wins: the number of matches the player has won
         matches: the number of matches the player has played
     """
-    pg = connect()
-    c = pg.cursor()
-    sql_string = "select * from player_standings;"
-    c.execute(sql_string)
-    result = c.fetchall()
-    pg.close()
-    return result
+    return execute_query("select * from player_standings;",fetch=True)
 
 def reportMatch(winner, loser):
     """Records the outcome of a single match between two players.
@@ -85,36 +62,18 @@ def reportMatch(winner, loser):
       winner:  the id number of the player who won
       loser:  the id number of the player who lost
     """
+    sql_string = "insert into matches(winner, loser) values(%s,%s);"
+    execute_query(sql_string, (winner,loser,),commit=True)
 
-    # if else block to make sure we don't get the same players paired more than once
-    # since first + second is a primary key, we will always insert them smaller id, bigger id
-    if winner > loser:
-        first = loser
-        second = winner
-    else:
-        first = winner
-        second = loser
-
-    
-    pg = connect()
-    c = pg.cursor()
-    sql_string = "insert into matches values(%s,%s,%s);"
-    c.execute(sql_string, (first,second,winner,))
-    pg.commit()
-    pg.close()
  
 def swissPairings():
     """Returns a list of pairs of players for the next round of a match.
-  
-    Assuming that there are an even number of players registered, each player
-    appears exactly once in the pairings.  Each player is paired with another
-    player with an equal or nearly-equal win record, that is, a player adjacent
-    to him or her in the standings.
-
-    * Functions will also prevents rematches between players
-    * Function will also handle odd number of players by skipping one player from pairings
-      the players that is not matched will earn a free win. The player will only earn one 
-      free win per tournament
+    
+    Each player appears exactly once in the pairings.  Each player is paired 
+    with another player with an equal or nearly-equal win record, that is, a player adjacent
+    to him or her in the standings. Each pair will make unique match preventing rematches
+     between players. If tournament has odd number of players, one player will  skip 
+     one match and will get a free win. Player can only earn one free win per tournament
   
     Returns:
       A list of tuples, each of which contains (id1, name1, id2, name2)
@@ -130,8 +89,8 @@ def swissPairings():
     # handle odd number of players by givin one player the free win
     # starting from the last player in the standings list, we will find
     # a player that does not have a free win and will give the player the 
-    # free win and exclude him from standings list which we use for pairing
-    # we will give the player a free win by reporting a match with the themselves
+    # free win and exclude him from the list which we use for pairing
+    # we will give the player a free win by reporting a match with  themselves
     if num_players%2 != 0:
         for i in range(len(standings)-1,-1,-1):
             player_id = standings[i][0]
@@ -140,7 +99,6 @@ def swissPairings():
                 standings.pop(i)
                 break
             
-
 
     #match players and prevent rematches between players using uniqueMatch function
     while len(standings) > 0:
@@ -169,14 +127,30 @@ def uniqueMatch(pair):
       A boolean true if 2 playes have not been matched before or false if 2 players played before
       in the tounament
     """
-
-    pair.sort()
-    pg = connect()
-    c = pg.cursor()
-    sql_string = "select * from matches where first_player = %s and second_player = %s;"
-    c.execute(sql_string, (pair[0], pair[1],))
-    result = c.fetchall()
+    sql_string = "select * from matches where winner = %s and loser = %s or  winner = %s and loser = %s;"
+    result = execute_query(sql_string, (pair[0], pair[1], pair[1], pair[0],),fetch=True)
     return len(result) == 0
 
 
+def execute_query(sql_string, variables =(), fetch=False, commit=False):
+    """ Query the database with and return all results
+    Args:
+      sql_string: the sql string to commit
+      params: tuple of params to replace in query
+      fetch: flag that determines if the result will be returned, use for query
+      commit: flag that is used for queries that needs to be commited set True to commit
 
+    Returns:
+      all results from tha database if fetch set to true, otherwice True
+    """
+    result=True 
+
+    pg = connect()
+    c = pg.cursor()
+    c.execute(sql_string, variables)
+    if fetch:
+        result = c.fetchall()
+    if commit:
+        pg.commit()
+    pg.close()
+    return result
